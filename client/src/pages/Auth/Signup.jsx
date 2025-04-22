@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-
+import "../../styles/signup.css"
 
 const Signup = () => {
     const [formData, setFormData] = useState({
@@ -45,62 +45,66 @@ const Signup = () => {
     }
   }
   return (
-    <div className="auth-form">
+    <div className="signup-container">
       <h2>Sign Up</h2>
       {error && <p className="error">{error}</p>}
-      <form onSubmit={handleSubmit}>
-        <div className="form-group">
-          <label>First Name</label>
+      <form onSubmit={handleSubmit} method="POST">
+        
           <input
+            placeholder='Write your first name'
             type="text"
             name="firstName"
+            id="FirstName"
             value={formData.firstName}
             onChange={handleChange}
             required
           />
-        </div>
-        <div className="form-group">
-          <label>Last Name</label>
+        
+        
           <input
+            placeholder='Write your last name '
             type="text"
             name="lastName"
             value={formData.lastName}
             onChange={handleChange}
             required
           />
-        </div>
-        <div className="form-group">
-          <label>Email</label>
+        
+        
           <input
+            placeholder='Write your email'
             type="email"
             name="email"
             value={formData.email}
             onChange={handleChange}
             required
           />
-        </div>
-        <div className="form-group">
-          <label>Password</label>
+       
+        
           <input
+            placeholder='Password'
             type="password"
             name="password"
             value={formData.password}
             onChange={handleChange}
             required
           />
-        </div>
-        <div className="form-group">
-          <label>Role</label>
-          <input
-            name="role"
-            value={formData.role}
-            onChange={handleChange}
-          >
-            
-          </input>
-        </div>
+        <select
+          value={formData.role}
+          id="role"
+          name="role"
+          onChange={handleChange}>
+          <option value="" disabled>
+            Select your role
+          </option>
+          <option value="study_director">Directeur des études</option>
+          <option value="department_head">Chef département</option>
+          <option value="admin">Administrateur</option>
+        </select>
+      
         <button type="submit">Sign Up</button>
       </form>
+      <br />
       <p>
         Already have an account? <a href="/login">Login</a>
       </p>
