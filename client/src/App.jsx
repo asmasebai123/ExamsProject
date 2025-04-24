@@ -1,12 +1,12 @@
 import React from 'react';
-import ReactDOM from 'react-dom/client'
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { AuthProvider } from './context/AuthContext';
+import { Route, BrowserRouter as Router, Routes } from 'react-router-dom';
 import Layout from './components/Layout';
-import Home from './pages/Home';
+import PrivateRoute from './components/PrivateRoute';
+import { AuthProvider } from './context/AuthContext';
 import Login from './pages/Auth/Login';
 import Signup from './pages/Auth/Signup';
-import PrivateRoute from './components/PrivateRoute';
+import Home from './pages/Home';
+import Admin from './pages/Admin';
 
 function App() {
   return (
@@ -16,6 +16,17 @@ function App() {
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
+            
+            {/* Admin routes */}
+            <Route path="/admin" element={
+              <PrivateRoute allowedRoles={['admin']}>
+                <Admin />
+              </PrivateRoute>
+            }>
+              <Route path="dashboard" element={<Admin />} />
+            </Route>
+            
+            {/* Home route */}
             <Route element={<PrivateRoute />}>
               <Route path="/" element={<Home />} />
             </Route>

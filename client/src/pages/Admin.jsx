@@ -1,360 +1,423 @@
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from 'C:/Users/Asma/Desktop/ProjetCalendrier/client/src/context/AuthContext.jsx';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
+import './Admin.css';
 
-
-const Admin = () => {
+const AdminDashboard = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('exams');
-  const [exams, setExams] = useState([]);
-  const [rooms, setRooms] = useState([]);
-  const [proctors, setProctors] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [state, setState] = useState({
+    exams: [],
+    rooms: [],
+    proctors: [],
+    loading: true,
+    error: '',
+    filters: {
+      date: '',
+      subject: '',
+      room: ''
+    }
+  });
 
   // Form states
-  const [examForm, setExamForm] = useState({
-    subject: '',
-    date: '',
-    duration: '',
-    roomId: '',
-    proctorId: ''
-  });
-  const [roomForm, setRoomForm] = useState({
-    name: '',
-    capacity: ''
+  const [forms, setForms] = useState({
+    exam: {
+      subject: '',
+      date: '',
+      duration: 90,
+      roomId: '',
+      proctorId: ''
+    },
+    room: {
+      name: '',
+      capacity: 30
+    },
+    notification: {
+      message: '',
+      recipients: 'all'
+    }
   });
 
+  // Fetch data on mount and tab change
   useEffect(() => {
     if (user?.role !== 'admin') {
-      navigate('/');
+      navigate('/login');
+      return;
     }
+    
+    const fetchData = async () => {
+      try {
+        setState(prev => ({...prev, loading: true}));
+        
+        const endpoints = {
+          exams: '/api/exams',
+          rooms: '/api/rooms',
+          proctors: '/api/users/proctors'
+        };
+        
+        const responses = await Promise.all(Object.values(endpoints).map(url => api.get(url)));
+        
+        setState({
+          exams: responses[0].data.data.exams,
+          rooms: responses[1].data.data.rooms,
+          proctors: responses[2].data.data.proctors,
+          loading: false,
+          error: ''
+        });
+        
+      } catch (err) {
+        setState(prev => ({
+          ...prev,
+          loading: false,
+          error: err.response?.data?.message || 'Erreur de chargement'
+        }));
+      }
+    };
+
     fetchData();
-  }, [user, navigate]);
+  }, [activeTab, user, navigate]);
 
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      const [examsRes, roomsRes, proctorsRes] = await Promise.all([
-        api.get('/api/exams'),
-        api.get('/api/rooms'),
-        api.get('/api/users/proctors')
-      ]);
-      setExams(examsRes.data);
-      setRooms(roomsRes.data);
-      setProctors(proctorsRes.data);
-      setLoading(false);
-    } catch (err) {
-      setError('Failed to fetch data');
-      setLoading(false);
-    }
-  };
-
+  // Handler for exam form submission
   const handleExamSubmit = async (e) => {
     e.preventDefault();
     try {
-      await api.post('/api/exams', examForm);
-      setExamForm({
-        subject: '',
-        date: '',
-        duration: '',
-        roomId: '',
-        proctorId: ''
-      });
-      fetchData();
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to create exam');
-    }
-  };
-
-  const handleRoomSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      await api.post('/api/rooms', roomForm);
-      setRoomForm({
-        name: '',
-        capacity: ''
-      });
-      fetchData();
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to create room');
-    }
-  };
-
-  const handleDeleteExam = async (id) => {
-    if (window.confirm('Are you sure you want to delete this exam?')) {
-      try {
-        await api.delete(`/api/exams/${id}`);
-        fetchData();
-      } catch (err) {
-        setError('Failed to delete exam');
+      const { data } = await api.post('/api/exams', forms.exam);
+      
+      if (data.status === 'success') {
+        setState(prev => ({
+          ...prev,
+          exams: [...prev.exams, data.data.exam],
+          error: ''
+        }));
+        
+        setForms(prev => ({
+          ...prev,
+          exam: {
+            subject: '',
+            date: '',
+            duration: 90,
+            roomId: '',
+            proctorId: ''
+          }
+        }));
       }
+    } catch (err) {
+      setState(prev => ({
+        ...prev,
+        error: err.response?.data?.message || 'Erreur lors de la création'
+      }));
     }
   };
 
-  const handleDuplicateExam = async (exam) => {
-    try {
-      await api.post('/api/exams', {
+  // Advanced exam duplication with date adjustment
+  const duplicateExam = (exam, daysToAdd = 7) => {
+    const newDate = new Date(exam.date);
+    newDate.setDate(newDate.getDate() + daysToAdd);
+    
+    setForms(prev => ({
+      ...prev,
+      exam: {
         ...exam,
-        date: new Date(new Date(exam.date).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString() // +7 days
-      });
-      fetchData();
-    } catch (err) {
-      setError('Failed to duplicate exam');
-    }
+        date: newDate.toISOString().slice(0, 16),
+        _id: undefined
+      }
+    }));
+    
+    setActiveTab('exams');
   };
 
-  const sendNotifications = async () => {
-    try {
-      await api.post('/api/notifications/send');
-      alert('Notifications sent successfully');
-    } catch (err) {
-      setError('Failed to send notifications');
-    }
-  };
+  // Filter exams based on criteria
+  const filteredExams = state.exams.filter(exam => {
+    return (
+      (!state.filters.date || exam.date.includes(state.filters.date)) &&
+      (!state.filters.subject || exam.subject.toLowerCase().includes(state.filters.subject.toLowerCase())) &&
+      (!state.filters.room || exam.room?._id === state.filters.room)
+    );
+  });
 
   return (
-    <div className="admin-container">
-      <header className="admin-header">
-        <h1>Admin Dashboard</h1>
-        <div className="admin-user">
-          <span>Welcome, {user?.firstName}</span>
-          <button onClick={logout} className="logout-btn">Logout</button>
+    <div className="admin-dashboard">
+      <header className="dashboard-header">
+        <div className="header-content">
+          <h1>Tableau de Bord Administrateur</h1>
+          <div className="user-info">
+            <span>Connecté en tant que: <strong>{user?.firstName} ({user?.role})</strong></span>
+            <button onClick={logout} className="logout-btn">
+              Déconnexion
+            </button>
+          </div>
         </div>
+        
+        <nav className="dashboard-nav">
+          {['exams', 'rooms', 'proctors', 'notifications'].map(tab => (
+            <button
+              key={tab}
+              className={`nav-btn ${activeTab === tab ? 'active' : ''}`}
+              onClick={() => setActiveTab(tab)}
+            >
+              {getTabLabel(tab)}
+            </button>
+          ))}
+        </nav>
       </header>
 
-      <nav className="admin-nav">
-        <button 
-          className={activeTab === 'exams' ? 'active' : ''} 
-          onClick={() => setActiveTab('exams')}
-        >
-          Manage Exams
-        </button>
-        <button 
-          className={activeTab === 'rooms' ? 'active' : ''} 
-          onClick={() => setActiveTab('rooms')}
-        >
-          Manage Rooms
-        </button>
-        <button 
-          className={activeTab === 'proctors' ? 'active' : ''} 
-          onClick={() => setActiveTab('proctors')}
-        >
-          Manage Proctors
-        </button>
-      </nav>
+      <div className="dashboard-content">
+        {state.error && (
+          <div className="error-alert">
+            {state.error}
+          </div>
+        )}
 
-      {error && <div className="error-message">{error}</div>}
-
-      <div className="admin-content">
-        {loading ? (
-          <div className="loading">Loading...</div>
+        {state.loading ? (
+          <div className="loading-indicator">
+            Chargement en cours...
+          </div>
         ) : (
           <>
             {activeTab === 'exams' && (
-              <div className="exams-section">
-                <h2>Exam Management</h2>
-                <form onSubmit={handleExamSubmit} className="admin-form">
-                  <div className="form-group">
-                    <label>Subject:</label>
-                    <input
-                      type="text"
-                      value={examForm.subject}
-                      onChange={(e) => setExamForm({...examForm, subject: e.target.value})}
-                      required
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Date and Time:</label>
-                    <input
-                      type="datetime-local"
-                      value={examForm.date}
-                      onChange={(e) => setExamForm({...examForm, date: e.target.value})}
-                      required
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Duration (minutes):</label>
-                    <input
-                      type="number"
-                      value={examForm.duration}
-                      onChange={(e) => setExamForm({...examForm, duration: e.target.value})}
-                      required
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Room:</label>
-                    <select
-                      value={examForm.roomId}
-                      onChange={(e) => setExamForm({...examForm, roomId: e.target.value})}
-                      required
-                    >
-                      <option value="">Select a room</option>
-                      {rooms.map(room => (
-                        <option key={room._id} value={room._id}>
-                          {room.name} (Capacity: {room.capacity})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label>Proctor:</label>
-                    <select
-                      value={examForm.proctorId}
-                      onChange={(e) => setExamForm({...examForm, proctorId: e.target.value})}
-                      required
-                    >
-                      <option value="">Select a proctor</option>
-                      {proctors.map(proctor => (
-                        <option key={proctor._id} value={proctor._id}>
-                          {proctor.firstName} {proctor.lastName}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <button type="submit" className="submit-btn">Add Exam</button>
-                </form>
-
-                <div className="exams-list">
-                  <h3>Upcoming Exams</h3>
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Subject</th>
-                        <th>Date</th>
-                        <th>Duration</th>
-                        <th>Room</th>
-                        <th>Proctor</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {exams.map(exam => (
-                        <tr key={exam._id}>
-                          <td>{exam.subject}</td>
-                          <td>{new Date(exam.date).toLocaleString()}</td>
-                          <td>{exam.duration} mins</td>
-                          <td>{exam.room?.name}</td>
-                          <td>{exam.proctor?.firstName} {exam.proctor?.lastName}</td>
-                          <td>
-                            <button 
-                              onClick={() => handleDuplicateExam(exam)}
-                              className="action-btn duplicate"
-                            >
-                              Duplicate
-                            </button>
-                            <button 
-                              onClick={() => handleDeleteExam(exam._id)}
-                              className="action-btn delete"
-                            >
-                              Delete
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              <ExamManagement
+                exams={filteredExams}
+                rooms={state.rooms}
+                proctors={state.proctors}
+                formData={forms.exam}
+                onFormChange={(e) => setForms({
+                  ...forms,
+                  exam: {
+                    ...forms.exam,
+                    [e.target.name]: e.target.value
+                  }
+                })}
+                onSubmit={handleExamSubmit}
+                onDelete={handleDeleteExam}
+                onDuplicate={duplicateExam}
+                filters={state.filters}
+                onFilterChange={(e) => setState({
+                  ...state,
+                  filters: {
+                    ...state.filters,
+                    [e.target.name]: e.target.value
+                  }
+                })}
+              />
             )}
 
             {activeTab === 'rooms' && (
-              <div className="rooms-section">
-                <h2>Room Management</h2>
-                <form onSubmit={handleRoomSubmit} className="admin-form">
-                  <div className="form-group">
-                    <label>Room Name:</label>
-                    <input
-                      type="text"
-                      value={roomForm.name}
-                      onChange={(e) => setRoomForm({...roomForm, name: e.target.value})}
-                      required
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Capacity:</label>
-                    <input
-                      type="number"
-                      value={roomForm.capacity}
-                      onChange={(e) => setRoomForm({...roomForm, capacity: e.target.value})}
-                      required
-                    />
-                  </div>
-                  <button type="submit" className="submit-btn">Add Room</button>
-                </form>
-
-                <div className="rooms-list">
-                  <h3>Available Rooms</h3>
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Name</th>
-                        <th>Capacity</th>
-                        <th>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rooms.map(room => (
-                        <tr key={room._id}>
-                          <td>{room.name}</td>
-                          <td>{room.capacity}</td>
-                          <td>
-                            {exams.some(e => e.room?._id === room._id) ? 
-                              'Occupied' : 'Available'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              <RoomManagement
+                rooms={state.rooms}
+                formData={forms.room}
+                onFormChange={(e) => setForms({
+                  ...forms,
+                  room: {
+                    ...forms.room,
+                    [e.target.name]: e.target.value
+                  }
+                })}
+                onSubmit={handleRoomSubmit}
+              />
             )}
 
             {activeTab === 'proctors' && (
-              <div className="proctors-section">
-                <h2>Proctor Management</h2>
-                <div className="proctors-list">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Name</th>
-                        <th>Email</th>
-                        <th>Department</th>
-                        <th>Assigned Exams</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {proctors.map(proctor => (
-                        <tr key={proctor._id}>
-                          <td>{proctor.firstName} {proctor.lastName}</td>
-                          <td>{proctor.email}</td>
-                          <td>{proctor.department}</td>
-                          <td>
-                            {exams.filter(e => e.proctor?._id === proctor._id).length}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              <ProctorManagement 
+                proctors={state.proctors}
+                exams={state.exams}
+              />
+            )}
+
+            {activeTab === 'notifications' && (
+              <NotificationCenter
+                formData={forms.notification}
+                onFormChange={(e) => setForms({
+                  ...forms,
+                  notification: {
+                    ...forms.notification,
+                    [e.target.name]: e.target.value
+                  }
+                })}
+                onSubmit={sendNotifications}
+              />
             )}
           </>
         )}
-      </div>
-
-      <div className="admin-actions">
-        <button 
-          onClick={sendNotifications}
-          className="notification-btn"
-        >
-          Send Notifications to All Users
-        </button>
       </div>
     </div>
   );
 };
 
-export default Admin;
+// Composants séparés pour chaque section
+const ExamManagement = ({ exams, rooms, proctors, formData, onFormChange, onSubmit, onDelete, onDuplicate, filters, onFilterChange }) => {
+  return (
+    <div className="management-section">
+      <div className="section-header">
+        <h2>Gestion des Examens</h2>
+        <div className="filters">
+          <input
+            type="date"
+            name="date"
+            value={filters.date}
+            onChange={onFilterChange}
+            placeholder="Filtrer par date"
+          />
+          <input
+            type="text"
+            name="subject"
+            value={filters.subject}
+            onChange={onFilterChange}
+            placeholder="Filtrer par matière"
+          />
+          <select
+            name="room"
+            value={filters.room}
+            onChange={onFilterChange}
+          >
+            <option value="">Toutes les salles</option>
+            {rooms.map(room => (
+              <option key={room._id} value={room._id}>
+                {room.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="form-container">
+        <h3>{formData._id ? 'Modifier Examen' : 'Ajouter Nouvel Examen'}</h3>
+        <form onSubmit={onSubmit}>
+          <div className="form-row">
+            <div className="form-group">
+              <label>Matière:</label>
+              <input
+                type="text"
+                name="subject"
+                value={formData.subject}
+                onChange={onFormChange}
+                required
+              />
+            </div>
+            
+            <div className="form-group">
+              <label>Date et Heure:</label>
+              <input
+                type="datetime-local"
+                name="date"
+                value={formData.date}
+                onChange={onFormChange}
+                required
+              />
+            </div>
+          </div>
+
+          <div className="form-row">
+            <div className="form-group">
+              <label>Durée (minutes):</label>
+              <input
+                type="number"
+                name="duration"
+                value={formData.duration}
+                onChange={onFormChange}
+                min="30"
+                required
+              />
+            </div>
+            
+            <div className="form-group">
+              <label>Salle:</label>
+              <select
+                name="roomId"
+                value={formData.roomId}
+                onChange={onFormChange}
+                required
+              >
+                <option value="">Sélectionner une salle</option>
+                {rooms.map(room => (
+                  <option key={room._id} value={room._id}>
+                    {room.name} (Capacité: {room.capacity})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label>Surveillant:</label>
+            <select
+              name="proctorId"
+              value={formData.proctorId}
+              onChange={onFormChange}
+              required
+            >
+              <option value="">Sélectionner un surveillant</option>
+              {proctors.map(proctor => (
+                <option key={proctor._id} value={proctor._id}>
+                  {proctor.firstName} {proctor.lastName}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <button type="submit" className="submit-btn">
+            {formData._id ? 'Mettre à jour' : 'Créer Examen'}
+          </button>
+        </form>
+      </div>
+
+      <div className="list-container">
+        <h3>Examens Programmes</h3>
+        <div className="responsive-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Matière</th>
+                <th>Date/Heure</th>
+                <th>Durée</th>
+                <th>Salle</th>
+                <th>Surveillant</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {exams.length > 0 ? (
+                exams.map(exam => (
+                  <tr key={exam._id}>
+                    <td>{exam.subject}</td>
+                    <td>{new Date(exam.date).toLocaleString('fr-FR')}</td>
+                    <td>{exam.duration} min</td>
+                    <td>{exam.room?.name || '-'}</td>
+                    <td>{exam.proctor?.firstName || '-'} {exam.proctor?.lastName || '-'}</td>
+                    <td className="actions">
+                      <button 
+                        onClick={() => duplicateExam(exam)}
+                        className="action-btn duplicate"
+                        title="Dupliquer"
+                      >
+                        <i className="fas fa-copy"></i>
+                      </button>
+                      <button 
+                        onClick={() => onDelete(exam._id)}
+                        className="action-btn delete"
+                        title="Supprimer"
+                      >
+                        <i className="fas fa-trash"></i>
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="6" className="no-data">
+                    Aucun examen trouvé
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// (Ajoutez les composants RoomManagement, ProctorManagement et NotificationCenter de manière similaire)
+
+export default AdminDashboard;
